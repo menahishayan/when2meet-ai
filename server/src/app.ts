@@ -51,6 +51,30 @@ export async function handleAvailabilityRequest(
 export function createApp(deps: AppDeps = {}) {
   const app = express();
   const fetchFn = deps.fetchFn ?? fetch;
+  const corsOrigin = process.env.CORS_ORIGIN?.trim();
+
+  app.use((req, res, next) => {
+    const requestOrigin = req.headers.origin;
+
+    if (corsOrigin) {
+      if (requestOrigin === corsOrigin) {
+        res.setHeader("Access-Control-Allow-Origin", requestOrigin);
+      }
+    } else {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    }
+
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+
+    if (req.method === "OPTIONS") {
+      res.status(204).end();
+      return;
+    }
+
+    next();
+  });
+
   app.use(express.json({ limit: "2mb" }));
 
   app.get("/health", (_req, res) => {

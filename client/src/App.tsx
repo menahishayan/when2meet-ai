@@ -13,6 +13,16 @@ type StreamEventPayload = {
   error?: string;
 };
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+
+function apiUrl(path: string): string {
+  if (!API_BASE_URL) {
+    return path;
+  }
+
+  return `${API_BASE_URL}${path}`;
+}
+
 function toLocalMap(availabilitiesByPerson: Record<string, string[]>): Record<string, string[]> {
   return Object.fromEntries(
     Object.entries(availabilitiesByPerson).map(([person, slots]) => [
@@ -44,7 +54,7 @@ function readInitialProvider(): LlmProvider {
 }
 
 async function fetchAvailability(url: string): Promise<AvailabilityResponse> {
-  const response = await fetch(`/api/when2meet/availability?url=${encodeURIComponent(url)}`);
+  const response = await fetch(apiUrl(`/api/when2meet/availability?url=${encodeURIComponent(url)}`));
 
   if (!response.ok) {
     let message = `Request failed with status ${response.status}`;
@@ -73,7 +83,7 @@ async function streamLlmResponse(options: {
   onDelta: (delta: string) => void;
   onErrorEvent: (message: string) => void;
 }) {
-  const response = await fetch("/api/llm/stream", {
+  const response = await fetch(apiUrl("/api/llm/stream"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

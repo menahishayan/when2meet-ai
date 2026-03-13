@@ -24,3 +24,19 @@ Default URL is blank; enter your own `https://www.when2meet.com/?<eventId>-<code
 - All tests: `npm test`
 - Server only: `npm run test --workspace server`
 - Client only: `npm run test --workspace client`
+
+## Deploy (Railway + Vercel)
+
+1. Push repo to GitHub.
+2. Deploy backend on Railway:
+   - Service root directory: `server`
+   - Build command: `npm install && npm run build`
+   - Start command: `npm start`
+   - Env var: `CORS_ORIGIN=https://your-vercel-app.vercel.app`
+   - Copy deployed URL, e.g. `https://your-backend.up.railway.app`
+3. Deploy frontend on Vercel:
+   - Project root directory: `client`
+   - Build command: `npm run build`
+   - Output directory: `dist`
+   - Env var: `VITE_API_BASE_URL=https://your-backend.up.railway.app`
+4. Redeploy Vercel after setting env var.
