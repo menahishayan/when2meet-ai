@@ -17,7 +17,7 @@ React + Node app that embeds a When2Meet page in an iframe and logs normalized p
    - `npm run dev:client`
 4. Open `http://localhost:5173`.
 
-Default URL is set to: `https://www.when2meet.com/?35187552-u5FTV`
+Default URL is blank; enter your own `https://www.when2meet.com/?<eventId>-<code>` link.
 
 ## Tests
 

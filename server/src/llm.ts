@@ -2,11 +2,17 @@ import type { Response as ExpressResponse } from "express";
 
 export type LlmProvider = "chatgpt" | "claude" | "gemini";
 
+export type ChatHistoryTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export type LlmStreamRequestBody = {
   provider: LlmProvider;
   apiKey: string;
   query: string;
   availabilitiesByPerson: Record<string, string[]>;
+  history: ChatHistoryTurn[];
 };
 
 export class LlmValidationError extends Error {}
@@ -18,6 +24,7 @@ type ProviderRequest = {
 };
 
 const claudeModelCache = new Map<string, string>();
+const geminiModelCache = new Map<string, string>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -25,6 +32,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isProvider(value: string): value is LlmProvider {
   return value === "chatgpt" || value === "claude" || value === "gemini";
+}
+
+function isHistoryRole(value: string): value is ChatHistoryTurn["role"] {
+  return value === "user" || value === "assistant";
 }
 
 export function validateLlmStreamRequestBody(body: unknown): LlmStreamRequestBody {
@@ -38,6 +49,7 @@ export function validateLlmStreamRequestBody(body: unknown): LlmStreamRequestBod
   const apiKey = String(body.apiKey ?? "").trim();
   const query = String(body.query ?? "").trim();
   const availabilitiesRaw = body.availabilitiesByPerson;
+  const historyRaw = body.history ?? [];
 
   if (!isProvider(provider)) {
     throw new LlmValidationError("provider must be one of: chatgpt, claude, gemini.");
@@ -55,6 +67,10 @@ export function validateLlmStreamRequestBody(body: unknown): LlmStreamRequestBod
     throw new LlmValidationError("availabilitiesByPerson must be an object.");
   }
 
+  if (!Array.isArray(historyRaw)) {
+    throw new LlmValidationError("history must be an array.");
+  }
+
   const availabilitiesByPerson: Record<string, string[]> = {};
 
   for (const [person, slots] of Object.entries(availabilitiesRaw)) {
@@ -65,24 +81,44 @@ export function validateLlmStreamRequestBody(body: unknown): LlmStreamRequestBod
     availabilitiesByPerson[person] = slots;
   }
 
+  const history: ChatHistoryTurn[] = historyRaw.map((turn, index) => {
+    if (!isRecord(turn)) {
+      throw new LlmValidationError(`history[${index}] must be an object.`);
+    }
+
+    const role = String(turn.role ?? "").trim().toLowerCase();
+    const content = String(turn.content ?? "").trim();
+
+    if (!isHistoryRole(role)) {
+      throw new LlmValidationError(`history[${index}].role must be 'user' or 'assistant'.`);
+    }
+
+    if (!content) {
+      throw new LlmValidationError(`history[${index}].content must be a non-empty string.`);
+    }
+
+    return { role, content };
+  });
+
   return {
     provider,
     apiKey,
     query,
     availabilitiesByPerson,
+    history,
   };
 }
 
-function buildPrompt(query: string, availabilitiesByPerson: Record<string, string[]>): string {
+function buildContextPrompt(availabilitiesByPerson: Record<string, string[]>): string {
   return [
     "You are a scheduling assistant.",
-    "Use the availability data to answer the user's question.",
+    "Use the availability data to answer questions in this conversation.",
     "If possible, suggest concrete time windows and mention tradeoffs.",
-    "",
-    `User question: ${query}`,
     "",
     "Availability data (local time strings):",
     JSON.stringify(availabilitiesByPerson, null, 2),
+    "",
+    "Use this availability data for all upcoming chat turns.",
   ].join("\n");
 }
 
@@ -90,9 +126,18 @@ type ClaudeModelsResponse = {
   data?: Array<{ id?: string }>;
 };
 
+type GeminiModelsResponse = {
+  models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+};
+
 const fallbackClaudeModels = [
   "claude-3-5-sonnet-latest",
   "claude-3-5-sonnet-20241022",
+];
+
+const fallbackGeminiModels = [
+  "models/gemini-1.5-flash",
+  "models/gemini-1.5-pro",
 ];
 
 function rankClaudeModels(models: string[]): string[] {
@@ -139,8 +184,67 @@ async function resolveClaudeModel(apiKey: string, fetchFn: typeof fetch): Promis
   return selected;
 }
 
-function buildProviderRequest(payload: LlmStreamRequestBody, claudeModel?: string): ProviderRequest {
-  const prompt = buildPrompt(payload.query, payload.availabilitiesByPerson);
+function normalizeGeminiModelName(name: string): string {
+  if (name.startsWith("models/")) {
+    return name;
+  }
+  return `models/${name}`;
+}
+
+function rankGeminiModels(models: string[]): string[] {
+  const unique = [...new Set(models.map(normalizeGeminiModelName))];
+  return unique.sort((a, b) => {
+    const aIsFlash = a.includes("flash") ? 1 : 0;
+    const bIsFlash = b.includes("flash") ? 1 : 0;
+    if (aIsFlash !== bIsFlash) {
+      return bIsFlash - aIsFlash;
+    }
+    return b.localeCompare(a);
+  });
+}
+
+async function resolveGeminiModel(apiKey: string, fetchFn: typeof fetch): Promise<string> {
+  const cached = geminiModelCache.get(apiKey);
+  if (cached) {
+    return cached;
+  }
+
+  const modelListResponse = await fetchFn("https://generativelanguage.googleapis.com/v1beta/models", {
+    method: "GET",
+    headers: {
+      "x-goog-api-key": apiKey,
+      "content-type": "application/json",
+    },
+  });
+
+  if (!modelListResponse.ok) {
+    const fallback = fallbackGeminiModels[0];
+    geminiModelCache.set(apiKey, fallback);
+    return fallback;
+  }
+
+  const body = (await modelListResponse.json()) as GeminiModelsResponse;
+  const candidateNames = (body.models ?? [])
+    .filter((model) => {
+      const methods = model.supportedGenerationMethods ?? [];
+      return methods.includes("generateContent");
+    })
+    .map((model) => (typeof model.name === "string" ? model.name : ""))
+    .filter((name) => name.includes("gemini"));
+
+  const ranked = rankGeminiModels([...candidateNames, ...fallbackGeminiModels]);
+  const selected = ranked[0] ?? fallbackGeminiModels[0];
+  geminiModelCache.set(apiKey, selected);
+  return selected;
+}
+
+function buildProviderRequest(
+  payload: LlmStreamRequestBody,
+  claudeModel?: string,
+  geminiModel?: string,
+): ProviderRequest {
+  const contextPrompt = buildContextPrompt(payload.availabilitiesByPerson);
+  const history = payload.history;
 
   if (payload.provider === "chatgpt") {
     return {
@@ -160,9 +264,11 @@ function buildProviderRequest(payload: LlmStreamRequestBody, claudeModel?: strin
               content: "You help summarize and reason over scheduling availability data.",
             },
             {
-              role: "user",
-              content: prompt,
+              role: "system",
+              content: contextPrompt,
             },
+            ...history,
+            { role: "user", content: payload.query },
           ],
         }),
       },
@@ -187,16 +293,19 @@ function buildProviderRequest(payload: LlmStreamRequestBody, claudeModel?: strin
           messages: [
             {
               role: "user",
-              content: prompt,
+              content: contextPrompt,
             },
+            ...history,
+            { role: "user", content: payload.query },
           ],
         }),
       },
     };
   }
 
+  const model = normalizeGeminiModelName(geminiModel ?? fallbackGeminiModels[0]);
   return {
-    url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse",
+    url: `https://generativelanguage.googleapis.com/v1beta/${model}:streamGenerateContent?alt=sse`,
     init: {
       method: "POST",
       headers: {
@@ -207,7 +316,15 @@ function buildProviderRequest(payload: LlmStreamRequestBody, claudeModel?: strin
         contents: [
           {
             role: "user",
-            parts: [{ text: prompt }],
+            parts: [{ text: contextPrompt }],
+          },
+          ...history.map((turn) => ({
+            role: turn.role === "assistant" ? "model" : "user",
+            parts: [{ text: turn.content }],
+          })),
+          {
+            role: "user",
+            parts: [{ text: payload.query }],
           },
         ],
       }),
@@ -324,7 +441,8 @@ async function streamProviderToSse(provider: LlmProvider, upstreamResponse: Resp
 
 export async function handleLlmStream(payload: LlmStreamRequestBody, fetchFn: typeof fetch, res: ExpressResponse): Promise<void> {
   const claudeModel = payload.provider === "claude" ? await resolveClaudeModel(payload.apiKey, fetchFn) : undefined;
-  const providerRequest = buildProviderRequest(payload, claudeModel);
+  const geminiModel = payload.provider === "gemini" ? await resolveGeminiModel(payload.apiKey, fetchFn) : undefined;
+  const providerRequest = buildProviderRequest(payload, claudeModel, geminiModel);
   const upstreamResponse = await fetchFn(providerRequest.url, providerRequest.init);
 
   if (!upstreamResponse.ok) {

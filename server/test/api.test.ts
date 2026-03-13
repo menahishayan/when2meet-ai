@@ -40,7 +40,7 @@ describe("handleAvailabilityRequest", () => {
       }),
     );
 
-    const req = { query: { url: "https://www.when2meet.com/?35187552-u5FTV" } };
+    const req = { query: { url: "https://www.when2meet.com/?12345678-AbCdE" } };
     const res = createMockRes();
 
     await handleAvailabilityRequest(req as never, res as never, fetchMock as never);
@@ -55,7 +55,7 @@ describe("handleAvailabilityRequest", () => {
 
   it("returns 400 for invalid URLs", async () => {
     const fetchMock = vi.fn();
-    const req = { query: { url: "https://example.com/?35187552-u5FTV" } };
+    const req = { query: { url: "https://example.com/?12345678-AbCdE" } };
     const res = createMockRes();
 
     await handleAvailabilityRequest(req as never, res as never, fetchMock as never);
@@ -69,7 +69,7 @@ describe("handleAvailabilityRequest", () => {
         status: 404,
       }),
     );
-    const req = { query: { url: "https://www.when2meet.com/?35187552-u5FTV" } };
+    const req = { query: { url: "https://www.when2meet.com/?12345678-AbCdE" } };
     const res = createMockRes();
 
     await handleAvailabilityRequest(req as never, res as never, fetchMock as never);
@@ -83,7 +83,7 @@ describe("handleAvailabilityRequest", () => {
         status: 200,
       }),
     );
-    const req = { query: { url: "https://www.when2meet.com/?35187552-u5FTV" } };
+    const req = { query: { url: "https://www.when2meet.com/?12345678-AbCdE" } };
     const res = createMockRes();
 
     await handleAvailabilityRequest(req as never, res as never, fetchMock as never);

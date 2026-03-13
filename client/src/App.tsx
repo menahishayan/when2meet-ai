@@ -1,9 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import "./App.css";
-import type { AvailabilityResponse, CaptureStatus, LlmProvider } from "./types";
+import type { AvailabilityResponse, CaptureStatus, ChatHistoryTurn, LlmProvider } from "./types";
 
-const DEFAULT_URL = "https://www.when2meet.com/?35187552-u5FTV";
+const DEFAULT_URL = "";
 const STORAGE_KEY_API = "when2meet-ai-api-key";
 const STORAGE_KEY_PROVIDER = "when2meet-ai-provider";
 
@@ -68,6 +68,7 @@ async function streamLlmResponse(options: {
   apiKey: string;
   query: string;
   availabilitiesByPerson: Record<string, string[]>;
+  history: ChatHistoryTurn[];
   onDelta: (delta: string) => void;
   onErrorEvent: (message: string) => void;
 }) {
@@ -81,6 +82,7 @@ async function streamLlmResponse(options: {
       apiKey: options.apiKey,
       query: options.query,
       availabilitiesByPerson: options.availabilitiesByPerson,
+      history: options.history,
     }),
   });
 
@@ -180,6 +182,7 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamedResponse, setStreamedResponse] = useState("");
   const [llmError, setLlmError] = useState("");
+  const [history, setHistory] = useState<ChatHistoryTurn[]>([]);
 
   const peopleCount = useMemo(() => availability?.participantCount ?? 0, [availability]);
 
@@ -241,6 +244,7 @@ export default function App() {
     setLlmError("");
     setStreamedResponse("");
     setIsStreaming(true);
+    let fullAssistantResponse = "";
 
     try {
       await streamLlmResponse({
@@ -248,13 +252,23 @@ export default function App() {
         apiKey: cleanedApiKey,
         query: cleanedQuery,
         availabilitiesByPerson: localized,
+        history,
         onDelta: (delta) => {
+          fullAssistantResponse += delta;
           setStreamedResponse((previous) => previous + delta);
         },
         onErrorEvent: (message) => {
           setLlmError(message);
         },
       });
+
+      if (fullAssistantResponse.trim()) {
+        setHistory((previous) => [
+          ...previous,
+          { role: "user", content: cleanedQuery },
+          { role: "assistant", content: fullAssistantResponse.trim() },
+        ]);
+      }
     } catch (error) {
       setLlmError(error instanceof Error ? error.message : "Unknown LLM request error.");
     } finally {

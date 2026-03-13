@@ -50,10 +50,12 @@ describe("validateLlmStreamRequestBody", () => {
       availabilitiesByPerson: {
         Alice: ["3/13/2026, 3:00:00 PM"],
       },
+      history: [{ role: "user", content: "Earlier question" }],
     });
 
     expect(parsed.provider).toBe("chatgpt");
     expect(parsed.apiKey).toBe("abc");
+    expect(parsed.history).toHaveLength(1);
   });
 
   it("rejects unsupported provider", () => {
@@ -63,6 +65,7 @@ describe("validateLlmStreamRequestBody", () => {
         apiKey: "abc",
         query: "Who is free?",
         availabilitiesByPerson: {},
+        history: [],
       }),
     ).toThrowError(/provider/i);
   });
@@ -117,6 +120,7 @@ describe("handleLlmStream", () => {
         apiKey: "test-key",
         query: "Find a good slot",
         availabilitiesByPerson: { Alice: ["Friday 4 PM"] },
+        history: [],
       },
       fetchMock as never,
       res as never,
@@ -139,6 +143,7 @@ describe("handleLlmStream", () => {
           apiKey: "bad-key",
           query: "Find a slot",
           availabilitiesByPerson: { Alice: ["Friday 4 PM"] },
+          history: [],
         },
         fetchMock as never,
         res as never,
@@ -172,6 +177,7 @@ describe("handleLlmStream", () => {
         apiKey: "claude-key",
         query: "Best schedule?",
         availabilitiesByPerson: { Alice: ["Friday 4 PM"] },
+        history: [],
       },
       fetchMock as never,
       res as never,
@@ -184,5 +190,54 @@ describe("handleLlmStream", () => {
     const secondBody = String((fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.body);
     expect(secondBody).toContain("claude-3-7-sonnet-latest");
     expect(res.writes.join("")).toContain('data: {"delta":"Ready"}');
+  });
+
+  it("resolves gemini model from /v1beta/models before streaming", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () =>
+        new Response(
+          JSON.stringify({
+            models: [
+              {
+                name: "models/gemini-1.5-flash",
+                supportedGenerationMethods: ["generateContent"],
+              },
+              {
+                name: "models/gemini-2.0-flash",
+                supportedGenerationMethods: ["generateContent", "countTokens"],
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockImplementationOnce(async () =>
+        makeSseResponse([
+          'data: {"candidates":[{"content":{"parts":[{"text":"Try Monday 2pm"}]}}]}\n\n',
+          "data: [DONE]\n\n",
+        ]),
+      );
+
+    const res = createMockSseRes();
+
+    await handleLlmStream(
+      {
+        provider: "gemini",
+        apiKey: "gemini-key",
+        query: "Best schedule?",
+        availabilitiesByPerson: { Alice: ["Friday 4 PM"] },
+        history: [],
+      },
+      fetchMock as never,
+      res as never,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://generativelanguage.googleapis.com/v1beta/models");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
+      "/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse",
+    );
+    expect(res.writes.join("")).toContain('data: {"delta":"Try Monday 2pm"}');
   });
 });

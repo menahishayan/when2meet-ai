@@ -8,3 +8,8 @@ export type AvailabilityResponse = {
 export type CaptureStatus = "idle" | "loading" | "ready" | "error";
 
 export type LlmProvider = "chatgpt" | "claude" | "gemini";
+
+export type ChatHistoryTurn = {
+  role: "user" | "assistant";
+  content: string;
+};

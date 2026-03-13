@@ -25,6 +25,13 @@ describe("App", () => {
     localStorage.clear();
   });
 
+  function loadWhen2MeetUrl() {
+    fireEvent.change(screen.getByLabelText("When2Meet URL"), {
+      target: { value: "https://www.when2meet.com/?12345678-AbCdE" },
+    });
+    fireEvent.click(screen.getByText("Load"));
+  }
+
   it("calls the availability API when iframe loads", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
       new Response(JSON.stringify(successPayload), {
@@ -35,6 +42,7 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
+    loadWhen2MeetUrl();
 
     fireEvent.load(screen.getByTitle("When2Meet Frame"));
 
@@ -72,6 +80,7 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
+    loadWhen2MeetUrl();
 
     fireEvent.load(screen.getByTitle("When2Meet Frame"));
 
@@ -98,12 +107,35 @@ describe("App", () => {
       apiKey: string;
       query: string;
       availabilitiesByPerson: Record<string, string[]>;
+      history: Array<{ role: "user" | "assistant"; content: string }>;
     };
 
     expect(body.provider).toBe("chatgpt");
     expect(body.apiKey).toBe("test-api-key");
     expect(body.query).toBe("What are the best times?");
     expect(Object.keys(body.availabilitiesByPerson)).toEqual(["Alice", "Bob"]);
+    expect(body.history).toEqual([]);
+
+    fireEvent.change(screen.getByLabelText("AI query"), {
+      target: { value: "What about next best option?" },
+    });
+    fireEvent.click(screen.getByLabelText("Send query"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    const thirdCallInit = fetchMock.mock.calls[2]?.[1];
+    const followUpBody = JSON.parse(String((thirdCallInit as RequestInit | undefined)?.body)) as {
+      query: string;
+      history: Array<{ role: "user" | "assistant"; content: string }>;
+    };
+
+    expect(followUpBody.query).toBe("What about next best option?");
+    expect(followUpBody.history).toEqual([
+      { role: "user", content: "What are the best times?" },
+      { role: "assistant", content: "Top option: Tuesday 3pm. Backup: Wednesday 4pm." },
+    ]);
   });
 
   it("logs a clear warning if submit happens before data is ready", async () => {
@@ -115,6 +147,7 @@ describe("App", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     render(<App />);
+    loadWhen2MeetUrl();
 
     fireEvent.load(screen.getByTitle("When2Meet Frame"));
 

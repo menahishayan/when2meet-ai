@@ -9,17 +9,17 @@ import {
 
 describe("parseWhen2MeetUrl", () => {
   it("parses a valid when2meet URL", () => {
-    const parsed = parseWhen2MeetUrl("https://www.when2meet.com/?35187552-u5FTV");
+    const parsed = parseWhen2MeetUrl("https://www.when2meet.com/?12345678-AbCdE");
 
     expect(parsed).toEqual({
-      eventId: "35187552",
-      code: "u5FTV",
-      token: "35187552-u5FTV",
+      eventId: "12345678",
+      code: "AbCdE",
+      token: "12345678-AbCdE",
     });
   });
 
   it("rejects non-when2meet hosts", () => {
-    expect(() => parseWhen2MeetUrl("https://example.com/?35187552-u5FTV")).toThrow(
+    expect(() => parseWhen2MeetUrl("https://example.com/?12345678-AbCdE")).toThrow(
       UrlValidationError,
     );
   });
