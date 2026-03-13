@@ -23,8 +23,8 @@ Default URL is blank; enter your own `https://www.when2meet.com/?<eventId>-<code
 
 - Frontend (`client/.env`):
   - `VITE_API_BASE_URL` (optional, used in deployed frontend)
-  - `VITE_GOOGLE_ADS_CLIENT` (optional)
-  - `VITE_GOOGLE_ADS_SLOT` (optional)
+  - `VITE_GOOGLE_ADS_CLIENT` (AdSense publisher id, `ca-pub-...`)
+  - `VITE_GOOGLE_ADS_SLOT` (Ad unit slot id)
 - Backend (`server/.env`):
   - `SERVER_GEMINI_API_KEY` (required for frontend default mode)
   - `CORS_ORIGIN` (optional in local dev, recommended in production)
@@ -50,5 +50,6 @@ Default URL is blank; enter your own `https://www.when2meet.com/?<eventId>-<code
    - Build command: `npm run build`
    - Output directory: `dist`
    - Env var: `VITE_API_BASE_URL=https://your-backend.up.railway.app`
-   - Optional env vars for ads: `VITE_GOOGLE_ADS_CLIENT`, `VITE_GOOGLE_ADS_SLOT`
+   - Ads env vars: `VITE_GOOGLE_ADS_CLIENT=ca-pub-8962085849419447`, `VITE_GOOGLE_ADS_SLOT=<your ad unit slot>`
+   - `client/public/ads.txt` is served at `/ads.txt` automatically by Vite/Vercel
 4. Redeploy Vercel after setting env var.
