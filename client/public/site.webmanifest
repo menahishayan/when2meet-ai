@@ -1,0 +1,17 @@
+{
+  "name": "When2Meet AI",
+  "short_name": "When2Meet AI",
+  "description": "AI-assisted When2Meet schedule planning",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f6fa",
+  "theme_color": "#0f5db8",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

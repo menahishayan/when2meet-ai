@@ -53,3 +53,14 @@ Default URL is blank; enter your own `https://www.when2meet.com/?<eventId>-<code
    - Ads env vars: `VITE_GOOGLE_ADS_CLIENT=ca-pub-8962085849419447`, `VITE_GOOGLE_ADS_SLOT=<your ad unit slot>`
    - `client/public/ads.txt` is served at `/ads.txt` automatically by Vite/Vercel
 4. Redeploy Vercel after setting env var.
+
+## SEO Checklist
+
+1. Replace `https://example.com` in:
+   - `client/index.html` (canonical + JSON-LD fallback URL)
+   - `client/public/robots.txt` (sitemap URL)
+   - `client/public/sitemap.xml` (`<loc>` entries)
+2. Keep `client/public/ads.txt` deployed at `/ads.txt`.
+3. In Google Search Console:
+   - Verify your production domain.
+   - Submit `https://your-domain.com/sitemap.xml`.

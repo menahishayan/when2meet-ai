@@ -237,16 +237,6 @@ function GoogleAdsBanner() {
       return;
     }
 
-    const scriptId = "google-ads-script";
-    if (!document.getElementById(scriptId)) {
-      const script = document.createElement("script");
-      script.id = scriptId;
-      script.async = true;
-      script.crossOrigin = "anonymous";
-      script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(GOOGLE_ADS_CLIENT)}`;
-      document.head.appendChild(script);
-    }
-
     const adsWindow = window as Window & { adsbygoogle?: unknown[] };
     adsWindow.adsbygoogle = adsWindow.adsbygoogle ?? [];
 
