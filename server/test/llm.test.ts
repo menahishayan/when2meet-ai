@@ -145,4 +145,44 @@ describe("handleLlmStream", () => {
       ),
     ).rejects.toBeInstanceOf(LlmUpstreamError);
   });
+
+  it("resolves claude model from /v1/models before streaming", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () =>
+        new Response(
+          JSON.stringify({
+            data: [{ id: "claude-3-5-haiku-latest" }, { id: "claude-3-7-sonnet-latest" }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockImplementationOnce(async () =>
+        makeSseResponse([
+          'data: {"type":"content_block_delta","delta":{"text":"Ready"}}\n\n',
+          "data: [DONE]\n\n",
+        ]),
+      );
+
+    const res = createMockSseRes();
+
+    await handleLlmStream(
+      {
+        provider: "claude",
+        apiKey: "claude-key",
+        query: "Best schedule?",
+        availabilitiesByPerson: { Alice: ["Friday 4 PM"] },
+      },
+      fetchMock as never,
+      res as never,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://api.anthropic.com/v1/models");
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe("https://api.anthropic.com/v1/messages");
+
+    const secondBody = String((fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.body);
+    expect(secondBody).toContain("claude-3-7-sonnet-latest");
+    expect(res.writes.join("")).toContain('data: {"delta":"Ready"}');
+  });
 });

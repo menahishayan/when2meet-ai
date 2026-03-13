@@ -17,6 +17,8 @@ type ProviderRequest = {
   init: RequestInit;
 };
 
+const claudeModelCache = new Map<string, string>();
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -84,7 +86,60 @@ function buildPrompt(query: string, availabilitiesByPerson: Record<string, strin
   ].join("\n");
 }
 
-function buildProviderRequest(payload: LlmStreamRequestBody): ProviderRequest {
+type ClaudeModelsResponse = {
+  data?: Array<{ id?: string }>;
+};
+
+const fallbackClaudeModels = [
+  "claude-3-5-sonnet-latest",
+  "claude-3-5-sonnet-20241022",
+];
+
+function rankClaudeModels(models: string[]): string[] {
+  const unique = [...new Set(models)];
+  return unique.sort((a, b) => {
+    const aIsSonnet = a.includes("sonnet") ? 1 : 0;
+    const bIsSonnet = b.includes("sonnet") ? 1 : 0;
+    if (aIsSonnet !== bIsSonnet) {
+      return bIsSonnet - aIsSonnet;
+    }
+    return b.localeCompare(a);
+  });
+}
+
+async function resolveClaudeModel(apiKey: string, fetchFn: typeof fetch): Promise<string> {
+  const cached = claudeModelCache.get(apiKey);
+  if (cached) {
+    return cached;
+  }
+
+  const modelListResponse = await fetchFn("https://api.anthropic.com/v1/models", {
+    method: "GET",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+  });
+
+  if (!modelListResponse.ok) {
+    const fallback = fallbackClaudeModels[0];
+    claudeModelCache.set(apiKey, fallback);
+    return fallback;
+  }
+
+  const body = (await modelListResponse.json()) as ClaudeModelsResponse;
+  const ids = (body.data ?? [])
+    .map((entry) => (typeof entry.id === "string" ? entry.id : ""))
+    .filter(Boolean);
+
+  const ranked = rankClaudeModels([...ids, ...fallbackClaudeModels]);
+  const selected = ranked[0] ?? fallbackClaudeModels[0];
+  claudeModelCache.set(apiKey, selected);
+  return selected;
+}
+
+function buildProviderRequest(payload: LlmStreamRequestBody, claudeModel?: string): ProviderRequest {
   const prompt = buildPrompt(payload.query, payload.availabilitiesByPerson);
 
   if (payload.provider === "chatgpt") {
@@ -115,6 +170,7 @@ function buildProviderRequest(payload: LlmStreamRequestBody): ProviderRequest {
   }
 
   if (payload.provider === "claude") {
+    const model = claudeModel ?? fallbackClaudeModels[0];
     return {
       url: "https://api.anthropic.com/v1/messages",
       init: {
@@ -125,7 +181,7 @@ function buildProviderRequest(payload: LlmStreamRequestBody): ProviderRequest {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-3-5-sonnet-latest",
+          model,
           max_tokens: 1024,
           stream: true,
           messages: [
@@ -267,7 +323,8 @@ async function streamProviderToSse(provider: LlmProvider, upstreamResponse: Resp
 }
 
 export async function handleLlmStream(payload: LlmStreamRequestBody, fetchFn: typeof fetch, res: ExpressResponse): Promise<void> {
-  const providerRequest = buildProviderRequest(payload);
+  const claudeModel = payload.provider === "claude" ? await resolveClaudeModel(payload.apiKey, fetchFn) : undefined;
+  const providerRequest = buildProviderRequest(payload, claudeModel);
   const upstreamResponse = await fetchFn(providerRequest.url, providerRequest.init);
 
   if (!upstreamResponse.ok) {

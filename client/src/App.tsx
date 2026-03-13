@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import "./App.css";
 import type { AvailabilityResponse, CaptureStatus, LlmProvider } from "./types";
 
@@ -318,19 +319,6 @@ export default function App() {
           <button type="submit">Load</button>
         </form>
 
-        <iframe
-          title="When2Meet Frame"
-          src={iframeUrl}
-          onLoad={handleIframeLoad}
-          referrerPolicy="no-referrer"
-        />
-
-        <p className={`status ${status === "error" ? "error" : ""}`}>
-          Status: {statusLabel(status)}
-          {status === "ready" ? ` (${peopleCount} participants)` : ""}
-          {status === "error" && errorMessage ? ` - ${errorMessage}` : ""}
-        </p>
-
         <form className="query" onSubmit={handleQuerySubmit}>
           <div className="query-row">
             <input
@@ -357,9 +345,24 @@ export default function App() {
           <h2>LLM Response</h2>
           {llmError ? <p className="status error">{llmError}</p> : null}
           <div className="response-box">
-            {streamedResponse || (isStreaming ? "Streaming response..." : "No response yet.")}
+            <ReactMarkdown>
+              {streamedResponse || (isStreaming ? "Streaming response..." : "No response yet.")}
+            </ReactMarkdown>
           </div>
         </section>
+
+        <iframe
+          title="When2Meet Frame"
+          src={iframeUrl}
+          onLoad={handleIframeLoad}
+          referrerPolicy="no-referrer"
+        />
+
+        <p className={`status ${status === "error" ? "error" : ""}`}>
+          Status: {statusLabel(status)}
+          {status === "ready" ? ` (${peopleCount} participants)` : ""}
+          {status === "error" && errorMessage ? ` - ${errorMessage}` : ""}
+        </p>
       </div>
     </main>
   );
