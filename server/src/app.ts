@@ -5,6 +5,12 @@ import {
   HtmlParseError,
   UrlValidationError,
 } from "./when2meet.js";
+import {
+  handleLlmStream,
+  LlmUpstreamError,
+  LlmValidationError,
+  validateLlmStreamRequestBody,
+} from "./llm.js";
 
 type AppDeps = {
   fetchFn?: typeof fetch;
@@ -45,6 +51,7 @@ export async function handleAvailabilityRequest(
 export function createApp(deps: AppDeps = {}) {
   const app = express();
   const fetchFn = deps.fetchFn ?? fetch;
+  app.use(express.json({ limit: "2mb" }));
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true });
@@ -52,6 +59,42 @@ export function createApp(deps: AppDeps = {}) {
 
   app.get("/api/when2meet/availability", async (req, res) => {
     await handleAvailabilityRequest(req, res, fetchFn);
+  });
+
+  app.post("/api/llm/stream", async (req, res) => {
+    let payload;
+
+    try {
+      payload = validateLlmStreamRequestBody(req.body);
+    } catch (error) {
+      if (error instanceof LlmValidationError) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+      res.status(400).json({ error: "Invalid request body." });
+      return;
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    if (typeof res.flushHeaders === "function") {
+      res.flushHeaders();
+    }
+
+    try {
+      await handleLlmStream(payload, fetchFn, res);
+      res.write("event: done\ndata: {}\n\n");
+      res.end();
+    } catch (error) {
+      const message =
+        error instanceof LlmUpstreamError || error instanceof Error
+          ? error.message
+          : "Unknown LLM streaming error.";
+
+      res.write(`event: error\ndata: ${JSON.stringify({ error: message })}\n\n`);
+      res.end();
+    }
   });
 
   return app;

@@ -12,9 +12,44 @@
   box-shadow: 0 8px 24px rgba(18, 40, 72, 0.08);
 }
 
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 h1 {
-  margin: 0 0 12px;
+  margin: 0;
   font-size: 1.5rem;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.settings-panel {
+  border: 1px solid #cad4e4;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #f8faff;
+  display: grid;
+  gap: 10px;
+}
+
+.settings-field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+.settings-note {
+  margin: 0;
+  color: #4b5c79;
+  font-size: 0.8rem;
 }
 
 .controls {
@@ -28,11 +63,14 @@ h1 {
   min-width: 0;
 }
 
-input {
+input,
+select {
   border: 1px solid #b7c3d8;
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 0.95rem;
+  min-height: 40px;
+  background: #fff;
 }
 
 button {
@@ -46,6 +84,30 @@ button {
 
 button:hover {
   background: #0b4c96;
+}
+
+button:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 40px;
+  height: 40px;
+}
+
+.icon-button svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.send-button {
+  flex: 0 0 auto;
 }
 
 iframe {
@@ -69,6 +131,23 @@ iframe {
   margin-top: 12px;
 }
 
-.query input {
-  width: 100%;
+.query-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.response-panel {
+  margin-top: 12px;
+  border: 1px solid #d0d8e8;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fbfcff;
+}
+
+.response-box {
+  min-height: 90px;
+  white-space: pre-wrap;
+  line-height: 1.45;
+  color: #23304a;
 }
