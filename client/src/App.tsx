@@ -9,11 +9,22 @@ const STORAGE_KEY_PROVIDER = "when2meet-ai-provider";
 const STORAGE_KEY_MODE = "when2meet-ai-mode";
 const STORAGE_KEY_API_KEYS = "when2meet-ai-api-keys";
 const LEGACY_STORAGE_KEY_API = "when2meet-ai-api-key";
-const URL_LOAD_DEBOUNCE_MS = 2000;
+const URL_LOAD_DEBOUNCE_MS = 1000;
+const QUERY_PLACEHOLDER_ROTATE_MS = 3600;
+const QUERY_PLACEHOLDER_FADE_MS = 220;
+
+const QUERY_PLACEHOLDERS = [
+  "Are Katy and Eve both available at 2pm?",
+  "When is the best date and time if Lexi is non-negotiable?",
+  "Who can do a 45-minute meeting this Thursday afternoon?",
+  "Find the top 3 meeting windows for everyone.",
+  "What is the earliest time at least 4 people can attend?",
+];
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
-const GOOGLE_ADS_CLIENT = (import.meta.env.VITE_GOOGLE_ADS_CLIENT ?? "").trim();
-const GOOGLE_ADS_SLOT = (import.meta.env.VITE_GOOGLE_ADS_SLOT ?? "").trim();
+const GOOGLE_ADS_CLIENT = (import.meta.env.VITE_GOOGLE_ADS_CLIENT ?? "ca-pub-8962085849419447").trim();
+const GOOGLE_ADS_SLOT = (import.meta.env.VITE_GOOGLE_ADS_SLOT ?? "2974711027").trim();
+const GOOGLE_ADS_LAYOUT_KEY = (import.meta.env.VITE_GOOGLE_ADS_LAYOUT_KEY ?? "-fv+4x+8l-bt-5o").trim();
 
 type StreamEventPayload = {
   delta?: string;
@@ -230,7 +241,7 @@ function statusLabel(status: CaptureStatus): string {
 }
 
 function GoogleAdsBanner() {
-  const hasLiveAdConfig = Boolean(GOOGLE_ADS_CLIENT && GOOGLE_ADS_SLOT);
+  const hasLiveAdConfig = Boolean(GOOGLE_ADS_CLIENT && GOOGLE_ADS_SLOT && GOOGLE_ADS_LAYOUT_KEY);
 
   useEffect(() => {
     if (!hasLiveAdConfig) {
@@ -253,10 +264,10 @@ function GoogleAdsBanner() {
         <ins
           className="adsbygoogle"
           style={{ display: "block" }}
+          data-ad-format="fluid"
+          data-ad-layout-key={GOOGLE_ADS_LAYOUT_KEY}
           data-ad-client={GOOGLE_ADS_CLIENT}
           data-ad-slot={GOOGLE_ADS_SLOT}
-          data-ad-format="auto"
-          data-full-width-responsive="true"
         />
       ) : (
         <div className="ads-placeholder">Google Ads banner</div>
@@ -281,7 +292,10 @@ export default function App() {
   const [streamedResponse, setStreamedResponse] = useState("");
   const [llmError, setLlmError] = useState("");
   const [history, setHistory] = useState<ChatHistoryTurn[]>([]);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [isPlaceholderFading, setIsPlaceholderFading] = useState(false);
   const urlLoadTimerRef = useRef<number | null>(null);
+  const placeholderFadeTimerRef = useRef<number | null>(null);
   const iframeUrlRef = useRef(iframeUrl);
 
   const peopleCount = useMemo(() => availability?.participantCount ?? 0, [availability]);
@@ -308,6 +322,30 @@ export default function App() {
       if (urlLoadTimerRef.current !== null) {
         window.clearTimeout(urlLoadTimerRef.current);
         urlLoadTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const rotationId = window.setInterval(() => {
+      setIsPlaceholderFading(true);
+
+      if (placeholderFadeTimerRef.current !== null) {
+        window.clearTimeout(placeholderFadeTimerRef.current);
+      }
+
+      placeholderFadeTimerRef.current = window.setTimeout(() => {
+        setPlaceholderIndex((previous) => (previous + 1) % QUERY_PLACEHOLDERS.length);
+        setIsPlaceholderFading(false);
+        placeholderFadeTimerRef.current = null;
+      }, QUERY_PLACEHOLDER_FADE_MS);
+    }, QUERY_PLACEHOLDER_ROTATE_MS);
+
+    return () => {
+      window.clearInterval(rotationId);
+      if (placeholderFadeTimerRef.current !== null) {
+        window.clearTimeout(placeholderFadeTimerRef.current);
+        placeholderFadeTimerRef.current = null;
       }
     };
   }, []);
@@ -454,6 +492,8 @@ export default function App() {
           </div>
 
           <div className="controls">
+            <h3>How to use?</h3>
+            <p>Paste your when2meet link down here and ask questions to an AI</p>
             <input
               aria-label="When2Meet URL"
               value={urlInput}
@@ -462,16 +502,16 @@ export default function App() {
               onFocus={clearPendingUrlLoad}
               placeholder="https://www.when2meet.com/?..."
             />
-            <p className="controls-note">Auto-loads 2 seconds after leaving this field.</p>
           </div>
 
           <form className="query" onSubmit={handleQuerySubmit}>
             <div className="query-row">
               <input
                 aria-label="AI query"
+                className={isPlaceholderFading ? "query-input placeholder-fade" : "query-input"}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Ask about the schedule and press Enter..."
+                placeholder={QUERY_PLACEHOLDERS[placeholderIndex]}
                 disabled={isStreaming}
               />
               <button type="submit" className="icon-button send-button" aria-label="Send query" disabled={isStreaming}>

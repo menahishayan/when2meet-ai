@@ -47,6 +47,7 @@ h2 {
 
 input,
 select {
+  box-sizing: border-box;
   border: 1px solid #b7c3d8;
   border-radius: 8px;
   padding: 10px 12px;
@@ -100,6 +101,15 @@ button:disabled {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
+}
+
+.query-input::placeholder {
+  opacity: 1;
+  transition: opacity 220ms ease;
+}
+
+.query-input.placeholder-fade::placeholder {
+  opacity: 0;
 }
 
 .response-panel {
