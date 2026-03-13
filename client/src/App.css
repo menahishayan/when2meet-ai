@@ -2,6 +2,7 @@
   max-width: 1100px;
   margin: 0 auto;
   padding: 24px;
+  padding-bottom: 130px;
 }
 
 .panel {
@@ -26,41 +27,22 @@ h1 {
 }
 
 h2 {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 1rem;
 }
 
-.settings-panel {
-  border: 1px solid #cad4e4;
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 12px;
-  background: #f8faff;
-  display: grid;
-  gap: 10px;
-}
-
-.settings-field {
-  display: grid;
-  gap: 6px;
-  font-size: 0.9rem;
-}
-
-.settings-note {
-  margin: 0;
-  color: #4b5c79;
-  font-size: 0.8rem;
-}
-
 .controls {
-  display: flex;
-  gap: 8px;
   margin-bottom: 12px;
 }
 
 .controls input {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
+}
+
+.controls-note {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: #516486;
 }
 
 input,
@@ -110,23 +92,6 @@ button:disabled {
   flex: 0 0 auto;
 }
 
-iframe {
-  width: 100%;
-  height: 360px;
-  border: 1px solid #bfc9da;
-  border-radius: 10px;
-  background: #fff;
-}
-
-.status {
-  margin: 8px 0 0;
-  font-size: 0.9rem;
-}
-
-.status.error {
-  color: #9f1d35;
-}
-
 .query {
   margin-top: 12px;
 }
@@ -147,7 +112,6 @@ iframe {
 
 .response-box {
   min-height: 90px;
-  white-space: pre-wrap;
   line-height: 1.45;
   color: #23304a;
 }
@@ -191,4 +155,183 @@ iframe {
 .response-box thead th {
   background: #f2f6fd;
   font-weight: 600;
+}
+
+iframe {
+  width: 100%;
+  height: 260px;
+  border: 1px solid #bfc9da;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.iframe-container {
+  position: relative;
+}
+
+.iframe-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 1px solid #bfc9da;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.76);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #1f3c6e;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid #b7c6df;
+  border-top-color: #0f5db8;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner-sm {
+  width: 18px;
+  height: 18px;
+  border-color: rgba(255, 255, 255, 0.45);
+  border-top-color: #ffffff;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+}
+
+.status.error {
+  color: #9f1d35;
+}
+
+.settings-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 23, 44, 0.45);
+  padding: 16px;
+}
+
+.settings-modal {
+  width: min(560px, 100%);
+  background: #ffffff;
+  border: 1px solid #d8deea;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 20px 48px rgba(12, 23, 44, 0.2);
+  display: grid;
+  gap: 12px;
+}
+
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modal-close {
+  border-color: #c5d2e8;
+  background: #eef4ff;
+  color: #1d3d73;
+}
+
+.modal-close:hover {
+  background: #e3edff;
+}
+
+.settings-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.toggle-option {
+  border-color: #9bb0d0;
+  background: #f5f8ff;
+  color: #254376;
+  font-weight: 600;
+}
+
+.toggle-option.active {
+  border-color: #0f5db8;
+  background: #0f5db8;
+  color: #ffffff;
+}
+
+.settings-field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+.settings-note {
+  margin: 0;
+  color: #4b5c79;
+  font-size: 0.88rem;
+}
+
+.ads-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  min-height: 90px;
+  background: #ffffff;
+  border-top: 1px solid #d0d8e8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
+
+.adsbygoogle {
+  width: 100%;
+  max-width: 1200px;
+  min-height: 50px;
+}
+
+.ads-placeholder {
+  width: 100%;
+  max-width: 1200px;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #9fb0cd;
+  border-radius: 8px;
+  color: #4b5c79;
+  font-size: 0.9rem;
+  background: #f8faff;
+}
+
+@media (max-width: 720px) {
+  .app {
+    padding: 12px;
+    padding-bottom: 130px;
+  }
+
+  .panel {
+    padding: 12px;
+  }
+
+  iframe {
+    height: 220px;
+  }
 }

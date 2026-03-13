@@ -16,6 +16,36 @@ type AppDeps = {
   fetchFn?: typeof fetch;
 };
 
+const DEFAULT_MODE_REQUEST_LIMIT = 2;
+const DEFAULT_MODE_WINDOW_MS = 60_000;
+
+function getClientIdentifier(req: Request): string {
+  const forwardedFor = req.headers["x-forwarded-for"];
+  if (typeof forwardedFor === "string" && forwardedFor.trim()) {
+    return forwardedFor.split(",")[0]?.trim() || req.ip || "unknown-client";
+  }
+  return req.ip || "unknown-client";
+}
+
+function isOverDefaultModeRateLimit(
+  clientId: string,
+  requestTimesByClient: Map<string, number[]>,
+  now: number = Date.now(),
+): boolean {
+  const windowStart = now - DEFAULT_MODE_WINDOW_MS;
+  const previous = requestTimesByClient.get(clientId) ?? [];
+  const recent = previous.filter((time) => time > windowStart);
+
+  if (recent.length >= DEFAULT_MODE_REQUEST_LIMIT) {
+    requestTimesByClient.set(clientId, recent);
+    return true;
+  }
+
+  recent.push(now);
+  requestTimesByClient.set(clientId, recent);
+  return false;
+}
+
 export async function handleAvailabilityRequest(
   req: Request,
   res: Response,
@@ -52,6 +82,7 @@ export function createApp(deps: AppDeps = {}) {
   const app = express();
   const fetchFn = deps.fetchFn ?? fetch;
   const corsOrigin = process.env.CORS_ORIGIN?.trim();
+  const requestTimesByClient = new Map<string, number[]>();
 
   app.use((req, res, next) => {
     const requestOrigin = req.headers.origin;
@@ -99,6 +130,25 @@ export function createApp(deps: AppDeps = {}) {
       return;
     }
 
+    const serverGeminiApiKey = process.env.SERVER_GEMINI_API_KEY?.trim();
+    if (payload.mode === "default" && !serverGeminiApiKey) {
+      res.status(500).json({
+        error: "SERVER_GEMINI_API_KEY is not configured on the server.",
+      });
+      return;
+    }
+
+    if (payload.mode === "default") {
+      const clientId = getClientIdentifier(req);
+      if (isOverDefaultModeRateLimit(clientId, requestTimesByClient)) {
+        res.status(429).json({
+          error:
+            "Default mode is limited to 2 requests per minute. Switch to custom mode to use your own API key.",
+        });
+        return;
+      }
+    }
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -107,7 +157,7 @@ export function createApp(deps: AppDeps = {}) {
     }
 
     try {
-      await handleLlmStream(payload, fetchFn, res);
+      await handleLlmStream(payload, fetchFn, res, serverGeminiApiKey);
       res.write("event: done\ndata: {}\n\n");
       res.end();
     } catch (error) {

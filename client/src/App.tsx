@@ -1,19 +1,34 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "./App.css";
-import type { AvailabilityResponse, CaptureStatus, ChatHistoryTurn, LlmProvider } from "./types";
+import type { AvailabilityResponse, CaptureStatus, ChatHistoryTurn, LlmMode, LlmProvider } from "./types";
 
 const DEFAULT_URL = "";
-const STORAGE_KEY_API = "when2meet-ai-api-key";
 const STORAGE_KEY_PROVIDER = "when2meet-ai-provider";
+const STORAGE_KEY_MODE = "when2meet-ai-mode";
+const STORAGE_KEY_API_KEYS = "when2meet-ai-api-keys";
+const LEGACY_STORAGE_KEY_API = "when2meet-ai-api-key";
+const URL_LOAD_DEBOUNCE_MS = 2000;
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+const GOOGLE_ADS_CLIENT = (import.meta.env.VITE_GOOGLE_ADS_CLIENT ?? "").trim();
+const GOOGLE_ADS_SLOT = (import.meta.env.VITE_GOOGLE_ADS_SLOT ?? "").trim();
 
 type StreamEventPayload = {
   delta?: string;
   error?: string;
 };
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+type ApiKeysByProvider = Record<LlmProvider, string>;
+
+function emptyApiKeys(): ApiKeysByProvider {
+  return {
+    chatgpt: "",
+    claude: "",
+    gemini: "",
+  };
+}
 
 function apiUrl(path: string): string {
   if (!API_BASE_URL) {
@@ -25,19 +40,8 @@ function apiUrl(path: string): string {
 
 function toLocalMap(availabilitiesByPerson: Record<string, string[]>): Record<string, string[]> {
   return Object.fromEntries(
-    Object.entries(availabilitiesByPerson).map(([person, slots]) => [
-      person,
-      slots.map((isoTime) => new Date(isoTime).toLocaleString()),
-    ]),
+    Object.entries(availabilitiesByPerson).map(([person, slots]) => [person, slots.map((isoTime) => new Date(isoTime).toLocaleString())]),
   );
-}
-
-function readInitialApiKey(): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  return localStorage.getItem(STORAGE_KEY_API) ?? "";
 }
 
 function readInitialProvider(): LlmProvider {
@@ -51,6 +55,49 @@ function readInitialProvider(): LlmProvider {
   }
 
   return "chatgpt";
+}
+
+function readInitialMode(): LlmMode {
+  if (typeof window === "undefined") {
+    return "default";
+  }
+
+  const stored = (localStorage.getItem(STORAGE_KEY_MODE) ?? "default").toLowerCase();
+  return stored === "custom" ? "custom" : "default";
+}
+
+function readInitialApiKeys(): ApiKeysByProvider {
+  if (typeof window === "undefined") {
+    return emptyApiKeys();
+  }
+
+  const parsed = emptyApiKeys();
+  const stored = localStorage.getItem(STORAGE_KEY_API_KEYS);
+
+  if (stored) {
+    try {
+      const json = JSON.parse(stored) as Partial<ApiKeysByProvider>;
+      for (const provider of ["chatgpt", "claude", "gemini"] as const) {
+        if (typeof json[provider] === "string") {
+          parsed[provider] = json[provider] ?? "";
+        }
+      }
+    } catch {
+      // Ignore malformed localStorage payload.
+    }
+  }
+
+  // Migrate prior single-key storage to the currently selected provider.
+  const legacy = (localStorage.getItem(LEGACY_STORAGE_KEY_API) ?? "").trim();
+  if (legacy) {
+    const provider = readInitialProvider();
+    if (!parsed[provider]) {
+      parsed[provider] = legacy;
+    }
+    localStorage.removeItem(LEGACY_STORAGE_KEY_API);
+  }
+
+  return parsed;
 }
 
 async function fetchAvailability(url: string): Promise<AvailabilityResponse> {
@@ -75,6 +122,7 @@ async function fetchAvailability(url: string): Promise<AvailabilityResponse> {
 }
 
 async function streamLlmResponse(options: {
+  mode: LlmMode;
   provider: LlmProvider;
   apiKey: string;
   query: string;
@@ -89,6 +137,7 @@ async function streamLlmResponse(options: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
+      mode: options.mode,
       provider: options.provider,
       apiKey: options.apiKey,
       query: options.query,
@@ -180,6 +229,52 @@ function statusLabel(status: CaptureStatus): string {
   return "Error";
 }
 
+function GoogleAdsBanner() {
+  const hasLiveAdConfig = Boolean(GOOGLE_ADS_CLIENT && GOOGLE_ADS_SLOT);
+
+  useEffect(() => {
+    if (!hasLiveAdConfig) {
+      return;
+    }
+
+    const scriptId = "google-ads-script";
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement("script");
+      script.id = scriptId;
+      script.async = true;
+      script.crossOrigin = "anonymous";
+      script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(GOOGLE_ADS_CLIENT)}`;
+      document.head.appendChild(script);
+    }
+
+    const adsWindow = window as Window & { adsbygoogle?: unknown[] };
+    adsWindow.adsbygoogle = adsWindow.adsbygoogle ?? [];
+
+    try {
+      adsWindow.adsbygoogle.push({});
+    } catch {
+      // Ignore transient ad bootstrap errors.
+    }
+  }, [hasLiveAdConfig]);
+
+  return (
+    <footer className="ads-banner" aria-label="Advertisement">
+      {hasLiveAdConfig ? (
+        <ins
+          className="adsbygoogle"
+          style={{ display: "block" }}
+          data-ad-client={GOOGLE_ADS_CLIENT}
+          data-ad-slot={GOOGLE_ADS_SLOT}
+          data-ad-format="auto"
+          data-full-width-responsive="true"
+        />
+      ) : (
+        <div className="ads-placeholder">Google Ads banner</div>
+      )}
+    </footer>
+  );
+}
+
 export default function App() {
   const [urlInput, setUrlInput] = useState(DEFAULT_URL);
   const [iframeUrl, setIframeUrl] = useState(DEFAULT_URL);
@@ -189,21 +284,43 @@ export default function App() {
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [provider, setProvider] = useState<LlmProvider>(readInitialProvider);
-  const [apiKey, setApiKey] = useState<string>(readInitialApiKey);
+  const [mode, setMode] = useState<LlmMode>(readInitialMode);
+  const [apiKeysByProvider, setApiKeysByProvider] = useState<ApiKeysByProvider>(readInitialApiKeys);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isIframeLoading, setIsIframeLoading] = useState(false);
   const [streamedResponse, setStreamedResponse] = useState("");
   const [llmError, setLlmError] = useState("");
   const [history, setHistory] = useState<ChatHistoryTurn[]>([]);
+  const urlLoadTimerRef = useRef<number | null>(null);
+  const iframeUrlRef = useRef(iframeUrl);
 
   const peopleCount = useMemo(() => availability?.participantCount ?? 0, [availability]);
+  const selectedApiKey = apiKeysByProvider[provider] ?? "";
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_PROVIDER, provider);
   }, [provider]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_API, apiKey);
-  }, [apiKey]);
+    localStorage.setItem(STORAGE_KEY_MODE, mode);
+  }, [mode]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_API_KEYS, JSON.stringify(apiKeysByProvider));
+  }, [apiKeysByProvider]);
+
+  useEffect(() => {
+    iframeUrlRef.current = iframeUrl;
+  }, [iframeUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (urlLoadTimerRef.current !== null) {
+        window.clearTimeout(urlLoadTimerRef.current);
+        urlLoadTimerRef.current = null;
+      }
+    };
+  }, []);
 
   async function handleIframeLoad() {
     if (!iframeUrl) {
@@ -222,12 +339,50 @@ export default function App() {
       setStatus("error");
       setErrorMessage(error instanceof Error ? error.message : "Unknown error");
       console.warn("Availability capture failed", error);
+    } finally {
+      setIsIframeLoading(false);
     }
   }
 
-  function handleLoadUrl(event: FormEvent<HTMLFormElement>) {
+  function clearPendingUrlLoad() {
+    if (urlLoadTimerRef.current !== null) {
+      window.clearTimeout(urlLoadTimerRef.current);
+      urlLoadTimerRef.current = null;
+    }
+  }
+
+  function handleUrlBlur() {
+    clearPendingUrlLoad();
+    const trimmedUrl = urlInput.trim();
+
+    if (!trimmedUrl) {
+      setIframeUrl("");
+      setIsIframeLoading(false);
+      setAvailability(null);
+      setStatus("idle");
+      setErrorMessage("");
+      return;
+    }
+
+    urlLoadTimerRef.current = window.setTimeout(() => {
+      if (iframeUrlRef.current === trimmedUrl) {
+        urlLoadTimerRef.current = null;
+        return;
+      }
+
+      setIsIframeLoading(true);
+      setIframeUrl(trimmedUrl);
+      urlLoadTimerRef.current = null;
+    }, URL_LOAD_DEBOUNCE_MS);
+  }
+
+  function handleSettingsKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (mode !== "custom" || event.key !== "Enter") {
+      return;
+    }
+
     event.preventDefault();
-    setIframeUrl(urlInput.trim());
+    setSettingsOpen(false);
   }
 
   async function handleQuerySubmit(event: FormEvent<HTMLFormElement>) {
@@ -243,9 +398,9 @@ export default function App() {
       return;
     }
 
-    const cleanedApiKey = apiKey.trim();
-    if (!cleanedApiKey) {
-      setLlmError("Please add an API key in settings before sending a query.");
+    const cleanedApiKey = selectedApiKey.trim();
+    if (mode === "custom" && !cleanedApiKey) {
+      setLlmError(`Please add a ${provider} API key in settings before sending a query.`);
       return;
     }
 
@@ -259,6 +414,7 @@ export default function App() {
 
     try {
       await streamLlmResponse({
+        mode,
         provider,
         apiKey: cleanedApiKey,
         query: cleanedQuery,
@@ -287,89 +443,161 @@ export default function App() {
     }
   }
 
+  function handleApiKeyChange(nextValue: string) {
+    setApiKeysByProvider((previous) => ({
+      ...previous,
+      [provider]: nextValue,
+    }));
+  }
+
   return (
-    <main className="app">
-      <div className="panel">
-        <div className="header-row">
-          <h1>When2Meet... but with ✨ AI 🔮 (oooooooh)</h1>
-          <button type="button" className="icon-button" aria-label="Open settings" onClick={() => setSettingsOpen((current) => !current)}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M19.43 12.98c.04-.32.07-.65.07-.98s-.03-.66-.08-.99l2.11-1.65a.5.5 0 0 0 .12-.63l-2-3.46a.5.5 0 0 0-.6-.22l-2.49 1a7.15 7.15 0 0 0-1.72-.99l-.38-2.65a.5.5 0 0 0-.5-.42h-4a.5.5 0 0 0-.5.42L9.08 5.06c-.62.24-1.19.57-1.72.99l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46a.5.5 0 0 0 .12.63l2.11 1.65c-.05.33-.08.66-.08.99s.03.66.08.99L2.39 14.63a.5.5 0 0 0-.12.63l2 3.46c.13.22.39.31.6.22l2.49-1c.53.42 1.1.75 1.72.99l.38 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.38-2.65c.62-.24 1.19-.57 1.72-.99l2.49 1c.22.09.47 0 .6-.22l2-3.46a.5.5 0 0 0-.12-.63l-2.11-1.65ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z" />
-            </svg>
-          </button>
-        </div>
-
-        {settingsOpen ? (
-          <section className="settings-panel" aria-label="LLM settings">
-            <label className="settings-field">
-              Model Provider
-              <select aria-label="Model provider" value={provider} onChange={(event) => setProvider(event.target.value as LlmProvider)}>
-                <option value="chatgpt">ChatGPT</option>
-                <option value="claude">Claude</option>
-                <option value="gemini">Gemini</option>
-              </select>
-            </label>
-
-            <label className="settings-field">
-              API Key
-              <input
-                aria-label="API key"
-                type="password"
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder="Paste your API key"
-              />
-            </label>
-
-            <p className="settings-note">Saved in this browser (localStorage).</p>
-          </section>
-        ) : null}
-
-        <form className="controls" onSubmit={handleLoadUrl}>
-          <input
-            aria-label="When2Meet URL"
-            value={urlInput}
-            onChange={(event) => setUrlInput(event.target.value)}
-            placeholder="https://www.when2meet.com/?..."
-          />
-          <button type="submit">Load</button>
-        </form>
-
-        <form className="query" onSubmit={handleQuerySubmit}>
-          <div className="query-row">
-            <input
-              aria-label="AI query"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Ask a question and press Enter..."
-              disabled={isStreaming}
-            />
-            <button type="submit" className="icon-button send-button" aria-label="Send query" disabled={isStreaming}>
+    <>
+      <main className="app">
+        <div className="panel">
+          <div className="header-row">
+            <h1>When2Meet... but with ✨ AI 🔮 (oooooooh)</h1>
+            <button type="button" className="icon-button" aria-label="Open settings" onClick={() => setSettingsOpen(true)}>
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z" />
+                <path d="M19.43 12.98c.04-.32.07-.65.07-.98s-.03-.66-.08-.99l2.11-1.65a.5.5 0 0 0 .12-.63l-2-3.46a.5.5 0 0 0-.6-.22l-2.49 1a7.15 7.15 0 0 0-1.72-.99l-.38-2.65a.5.5 0 0 0-.5-.42h-4a.5.5 0 0 0-.5.42L9.08 5.06c-.62.24-1.19.57-1.72.99l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46a.5.5 0 0 0 .12.63l2.11 1.65c-.05.33-.08.66-.08.99s.03.66.08.99L2.39 14.63a.5.5 0 0 0-.12.63l2 3.46c.13.22.39.31.6.22l2.49-1c.53.42 1.1.75 1.72.99l.38 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.38-2.65c.62-.24 1.19-.57 1.72-.99l2.49 1c.22.09.47 0 .6-.22l2-3.46a.5.5 0 0 0-.12-.63l-2.11-1.65ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z" />
               </svg>
             </button>
           </div>
-        </form>
 
-        <section className="response-panel" aria-live="polite">
-          <h2>LLM Response</h2>
-          {llmError ? <p className="status error">{llmError}</p> : null}
-          <div className="response-box">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {streamedResponse || (isStreaming ? "Streaming response..." : "No response yet.")}
-            </ReactMarkdown>
+          <div className="controls">
+            <input
+              aria-label="When2Meet URL"
+              value={urlInput}
+              onChange={(event) => setUrlInput(event.target.value)}
+              onBlur={handleUrlBlur}
+              onFocus={clearPendingUrlLoad}
+              placeholder="https://www.when2meet.com/?..."
+            />
+            <p className="controls-note">Auto-loads 2 seconds after leaving this field.</p>
           </div>
-        </section>
 
-        <iframe title="When2Meet Frame" src={iframeUrl} onLoad={handleIframeLoad} referrerPolicy="no-referrer" />
+          <form className="query" onSubmit={handleQuerySubmit}>
+            <div className="query-row">
+              <input
+                aria-label="AI query"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Ask about the schedule and press Enter..."
+                disabled={isStreaming}
+              />
+              <button type="submit" className="icon-button send-button" aria-label="Send query" disabled={isStreaming}>
+                {isStreaming ? (
+                  <span className="spinner spinner-sm" aria-hidden="true" />
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </form>
 
-        <p className={`status ${status === "error" ? "error" : ""}`}>
-          Status: {statusLabel(status)}
-          {status === "ready" ? ` (${peopleCount} participants)` : ""}
-          {status === "error" && errorMessage ? ` - ${errorMessage}` : ""}
-        </p>
-      </div>
-    </main>
+          <section className="response-panel" aria-live="polite">
+            <h2>LLM Response</h2>
+            {llmError ? <p className="status error">{llmError}</p> : null}
+            <div className="response-box">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {streamedResponse || (isStreaming ? "Streaming response..." : "No response yet.")}
+              </ReactMarkdown>
+            </div>
+          </section>
+
+          <div className="iframe-container">
+            {isIframeLoading ? (
+              <div className="iframe-loading-overlay">
+                <span className="spinner" aria-hidden="true" />
+                <span>Loading schedule...</span>
+              </div>
+            ) : null}
+            <iframe title="When2Meet Frame" src={iframeUrl} onLoad={handleIframeLoad} referrerPolicy="no-referrer" />
+          </div>
+
+          <p className={`status ${status === "error" ? "error" : ""}`}>
+            Status: {statusLabel(status)}
+            {status === "ready" ? ` (${peopleCount} participants)` : ""}
+            {status === "error" && errorMessage ? ` - ${errorMessage}` : ""}
+          </p>
+        </div>
+      </main>
+
+      {settingsOpen ? (
+        <div className="settings-modal-backdrop" role="presentation" onClick={() => setSettingsOpen(false)}>
+          <section
+            className="settings-modal"
+            aria-modal="true"
+            role="dialog"
+            aria-label="LLM settings"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={handleSettingsKeyDown}
+          >
+            <div className="settings-modal-header">
+              <h2>Settings</h2>
+              <button type="button" className="icon-button modal-close" aria-label="Close settings" onClick={() => setSettingsOpen(false)}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4l-6.3 6.31-1.41-1.42L9.17 12 2.88 5.71 4.29 4.3l6.3 6.29 6.29-6.3z" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="settings-toggle" role="radiogroup" aria-label="Mode">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={mode === "default"}
+                className={mode === "default" ? "toggle-option active" : "toggle-option"}
+                onClick={() => setMode("default")}
+              >
+                Default
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={mode === "custom"}
+                className={mode === "custom" ? "toggle-option active" : "toggle-option"}
+                onClick={() => setMode("custom")}
+              >
+                Custom
+              </button>
+            </div>
+
+            {mode === "default" ? (
+              <p className="settings-note">
+                Default mode is limited to 2 requests per minute. You can use Custom Mode with your own API key for unlimited access.
+              </p>
+            ) : (
+              <>
+                <label className="settings-field">
+                  Model Provider
+                  <select aria-label="Model provider" value={provider} onChange={(event) => setProvider(event.target.value as LlmProvider)}>
+                    <option value="chatgpt">ChatGPT</option>
+                    <option value="claude">Claude</option>
+                    <option value="gemini">Gemini</option>
+                  </select>
+                </label>
+
+                <label className="settings-field">
+                  API Key
+                  <input
+                    aria-label="API key"
+                    type="password"
+                    value={selectedApiKey}
+                    onChange={(event) => handleApiKeyChange(event.target.value)}
+                    placeholder={`Paste your ${provider} API key`}
+                  />
+                </label>
+
+                <p className="settings-note">Keys are saved per provider in localStorage.</p>
+              </>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      <GoogleAdsBanner />
+    </>
   );
 }

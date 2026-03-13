@@ -4,3 +4,4 @@ coverage
 dist
 client/dist
 server/dist
+.env

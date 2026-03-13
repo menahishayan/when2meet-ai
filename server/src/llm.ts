@@ -1,6 +1,7 @@
 import type { Response as ExpressResponse } from "express";
 
 export type LlmProvider = "chatgpt" | "claude" | "gemini";
+export type LlmMode = "default" | "custom";
 
 export type ChatHistoryTurn = {
   role: "user" | "assistant";
@@ -8,6 +9,7 @@ export type ChatHistoryTurn = {
 };
 
 export type LlmStreamRequestBody = {
+  mode: LlmMode;
   provider: LlmProvider;
   apiKey: string;
   query: string;
@@ -34,6 +36,10 @@ function isProvider(value: string): value is LlmProvider {
   return value === "chatgpt" || value === "claude" || value === "gemini";
 }
 
+function isMode(value: string): value is LlmMode {
+  return value === "default" || value === "custom";
+}
+
 function isHistoryRole(value: string): value is ChatHistoryTurn["role"] {
   return value === "user" || value === "assistant";
 }
@@ -43,6 +49,9 @@ export function validateLlmStreamRequestBody(body: unknown): LlmStreamRequestBod
     throw new LlmValidationError("Request body must be a JSON object.");
   }
 
+  const mode = String(body.mode ?? "custom")
+    .trim()
+    .toLowerCase();
   const provider = String(body.provider ?? "")
     .trim()
     .toLowerCase();
@@ -51,11 +60,15 @@ export function validateLlmStreamRequestBody(body: unknown): LlmStreamRequestBod
   const availabilitiesRaw = body.availabilitiesByPerson;
   const historyRaw = body.history ?? [];
 
+  if (!isMode(mode)) {
+    throw new LlmValidationError("mode must be one of: default, custom.");
+  }
+
   if (!isProvider(provider)) {
     throw new LlmValidationError("provider must be one of: chatgpt, claude, gemini.");
   }
 
-  if (!apiKey) {
+  if (mode === "custom" && !apiKey) {
     throw new LlmValidationError("apiKey is required.");
   }
 
@@ -101,6 +114,7 @@ export function validateLlmStreamRequestBody(body: unknown): LlmStreamRequestBod
   });
 
   return {
+    mode,
     provider,
     apiKey,
     query,
@@ -439,10 +453,35 @@ async function streamProviderToSse(provider: LlmProvider, upstreamResponse: Resp
   }
 }
 
-export async function handleLlmStream(payload: LlmStreamRequestBody, fetchFn: typeof fetch, res: ExpressResponse): Promise<void> {
-  const claudeModel = payload.provider === "claude" ? await resolveClaudeModel(payload.apiKey, fetchFn) : undefined;
-  const geminiModel = payload.provider === "gemini" ? await resolveGeminiModel(payload.apiKey, fetchFn) : undefined;
-  const providerRequest = buildProviderRequest(payload, claudeModel, geminiModel);
+export async function handleLlmStream(
+  payload: LlmStreamRequestBody,
+  fetchFn: typeof fetch,
+  res: ExpressResponse,
+  serverGeminiApiKey?: string,
+): Promise<void> {
+  const effectiveProvider: LlmProvider = payload.mode === "default" ? "gemini" : payload.provider;
+  const effectiveApiKey =
+    payload.mode === "default" ? String(serverGeminiApiKey ?? "").trim() : payload.apiKey;
+
+  if (!effectiveApiKey) {
+    throw new LlmValidationError("No API key available for selected mode.");
+  }
+
+  const requestPayload: LlmStreamRequestBody = {
+    ...payload,
+    provider: effectiveProvider,
+    apiKey: effectiveApiKey,
+  };
+
+  const claudeModel =
+    requestPayload.provider === "claude"
+      ? await resolveClaudeModel(requestPayload.apiKey, fetchFn)
+      : undefined;
+  const geminiModel =
+    requestPayload.provider === "gemini"
+      ? await resolveGeminiModel(requestPayload.apiKey, fetchFn)
+      : undefined;
+  const providerRequest = buildProviderRequest(requestPayload, claudeModel, geminiModel);
   const upstreamResponse = await fetchFn(providerRequest.url, providerRequest.init);
 
   if (!upstreamResponse.ok) {
@@ -450,5 +489,5 @@ export async function handleLlmStream(payload: LlmStreamRequestBody, fetchFn: ty
     throw new LlmUpstreamError(`LLM upstream error ${upstreamResponse.status}: ${body.slice(0, 500) || "No response body"}`);
   }
 
-  await streamProviderToSse(payload.provider, upstreamResponse, res);
+  await streamProviderToSse(requestPayload.provider, upstreamResponse, res);
 }

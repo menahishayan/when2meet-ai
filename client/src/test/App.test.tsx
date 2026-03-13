@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 
@@ -26,10 +26,16 @@ describe("App", () => {
   });
 
   function loadWhen2MeetUrl() {
-    fireEvent.change(screen.getByLabelText("When2Meet URL"), {
+    const urlInput = screen.getByLabelText("When2Meet URL");
+    fireEvent.change(urlInput, {
       target: { value: "https://www.when2meet.com/?12345678-AbCdE" },
     });
-    fireEvent.click(screen.getByText("Load"));
+    vi.useFakeTimers();
+    fireEvent.blur(urlInput);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    vi.useRealTimers();
   }
 
   it("calls the availability API when iframe loads", async () => {
@@ -53,8 +59,12 @@ describe("App", () => {
   });
 
   it("submits query with send button and streams the LLM response", async () => {
-    localStorage.setItem("when2meet-ai-api-key", "test-api-key");
     localStorage.setItem("when2meet-ai-provider", "chatgpt");
+    localStorage.setItem("when2meet-ai-mode", "custom");
+    localStorage.setItem(
+      "when2meet-ai-api-keys",
+      JSON.stringify({ chatgpt: "test-api-key", claude: "", gemini: "" }),
+    );
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
@@ -103,6 +113,7 @@ describe("App", () => {
 
     const secondCallInit = fetchMock.mock.calls[1]?.[1];
     const body = JSON.parse(String(secondCallInit?.body)) as {
+      mode: string;
       provider: string;
       apiKey: string;
       query: string;
@@ -110,6 +121,7 @@ describe("App", () => {
       history: Array<{ role: "user" | "assistant"; content: string }>;
     };
 
+    expect(body.mode).toBe("custom");
     expect(body.provider).toBe("chatgpt");
     expect(body.apiKey).toBe("test-api-key");
     expect(body.query).toBe("What are the best times?");

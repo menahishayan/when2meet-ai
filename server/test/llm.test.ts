@@ -44,6 +44,7 @@ function createMockSseRes(): MockSseRes {
 describe("validateLlmStreamRequestBody", () => {
   it("accepts valid request payload", () => {
     const parsed = validateLlmStreamRequestBody({
+      mode: "custom",
       provider: "chatgpt",
       apiKey: "abc",
       query: "Who is free?",
@@ -54,13 +55,30 @@ describe("validateLlmStreamRequestBody", () => {
     });
 
     expect(parsed.provider).toBe("chatgpt");
+    expect(parsed.mode).toBe("custom");
     expect(parsed.apiKey).toBe("abc");
     expect(parsed.history).toHaveLength(1);
+  });
+
+  it("accepts default mode without api key", () => {
+    const parsed = validateLlmStreamRequestBody({
+      mode: "default",
+      provider: "gemini",
+      query: "Who is free?",
+      availabilitiesByPerson: {
+        Alice: ["3/13/2026, 3:00:00 PM"],
+      },
+      history: [],
+    });
+
+    expect(parsed.mode).toBe("default");
+    expect(parsed.apiKey).toBe("");
   });
 
   it("rejects unsupported provider", () => {
     expect(() =>
       validateLlmStreamRequestBody({
+        mode: "custom",
         provider: "unknown",
         apiKey: "abc",
         query: "Who is free?",
@@ -116,6 +134,7 @@ describe("handleLlmStream", () => {
 
     await handleLlmStream(
       {
+        mode: "custom",
         provider: "chatgpt",
         apiKey: "test-key",
         query: "Find a good slot",
@@ -139,6 +158,7 @@ describe("handleLlmStream", () => {
     await expect(
       handleLlmStream(
         {
+          mode: "custom",
           provider: "chatgpt",
           apiKey: "bad-key",
           query: "Find a slot",
@@ -173,6 +193,7 @@ describe("handleLlmStream", () => {
 
     await handleLlmStream(
       {
+        mode: "custom",
         provider: "claude",
         apiKey: "claude-key",
         query: "Best schedule?",
@@ -223,6 +244,7 @@ describe("handleLlmStream", () => {
 
     await handleLlmStream(
       {
+        mode: "custom",
         provider: "gemini",
         apiKey: "gemini-key",
         query: "Best schedule?",

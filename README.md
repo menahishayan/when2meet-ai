@@ -1,6 +1,6 @@
 # when2meet-ai
 
-React + Node app that embeds a When2Meet page in an iframe and logs normalized per-person availability on query submit.
+React + Node app that embeds a When2Meet page in an iframe, fetches normalized per-person availability, and supports AI chat in default or custom API-key mode.
 
 ## Structure
 
@@ -19,6 +19,16 @@ React + Node app that embeds a When2Meet page in an iframe and logs normalized p
 
 Default URL is blank; enter your own `https://www.when2meet.com/?<eventId>-<code>` link.
 
+## Environment Variables
+
+- Frontend (`client/.env`):
+  - `VITE_API_BASE_URL` (optional, used in deployed frontend)
+  - `VITE_GOOGLE_ADS_CLIENT` (optional)
+  - `VITE_GOOGLE_ADS_SLOT` (optional)
+- Backend (`server/.env`):
+  - `SERVER_GEMINI_API_KEY` (required for frontend default mode)
+  - `CORS_ORIGIN` (optional in local dev, recommended in production)
+
 ## Tests
 
 - All tests: `npm test`
@@ -32,6 +42,7 @@ Default URL is blank; enter your own `https://www.when2meet.com/?<eventId>-<code
    - Service root directory: `server`
    - Build command: `npm install && npm run build`
    - Start command: `npm start`
+   - Env var: `SERVER_GEMINI_API_KEY=<your Gemini API key>`
    - Env var: `CORS_ORIGIN=https://your-vercel-app.vercel.app`
    - Copy deployed URL, e.g. `https://your-backend.up.railway.app`
 3. Deploy frontend on Vercel:
@@ -39,4 +50,5 @@ Default URL is blank; enter your own `https://www.when2meet.com/?<eventId>-<code
    - Build command: `npm run build`
    - Output directory: `dist`
    - Env var: `VITE_API_BASE_URL=https://your-backend.up.railway.app`
+   - Optional env vars for ads: `VITE_GOOGLE_ADS_CLIENT`, `VITE_GOOGLE_ADS_SLOT`
 4. Redeploy Vercel after setting env var.
