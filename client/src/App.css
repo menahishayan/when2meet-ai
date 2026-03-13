@@ -171,3 +171,24 @@ iframe {
   border-radius: 4px;
   padding: 0.1rem 0.3rem;
 }
+
+.response-box table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 0.75rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.response-box th,
+.response-box td {
+  border: 1px solid #d6deed;
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.response-box thead th {
+  background: #f2f6fd;
+  font-weight: 600;
+}

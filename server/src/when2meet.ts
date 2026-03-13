@@ -36,17 +36,24 @@ export function parseWhen2MeetUrl(rawUrl: string): ParsedWhen2MeetUrl {
 
 function parsePeople(html: string): Array<{ index: number; id: number; name: string }> {
   const regex = /PeopleNames\[(\d+)\]\s*=\s*'((?:\\'|[^'])*)';PeopleIDs\[\1\]\s*=\s*(\d+);/g;
-  const people: Array<{ index: number; id: number; name: string }> = [];
+  const byId = new Map<number, { index: number; id: number; name: string }>();
 
   for (const match of html.matchAll(regex)) {
-    people.push({
+    const person = {
       index: Number(match[1]),
       name: match[2].replace(/\\'/g, "'"),
       id: Number(match[3]),
-    });
+    };
+
+    const existing = byId.get(person.id);
+    // When2Meet can emit duplicate PeopleNames/PeopleIDs blocks in the page.
+    // Keep the earliest index for each person id to avoid duplicate names downstream.
+    if (!existing || person.index < existing.index) {
+      byId.set(person.id, person);
+    }
   }
 
-  return people.sort((a, b) => a.index - b.index);
+  return [...byId.values()].sort((a, b) => a.index - b.index);
 }
 
 function parseSlots(html: string): Map<number, number> {

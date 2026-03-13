@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import "./App.css";
 import type { AvailabilityResponse, CaptureStatus, ChatHistoryTurn, LlmProvider } from "./types";
 
@@ -280,13 +281,8 @@ export default function App() {
     <main className="app">
       <div className="panel">
         <div className="header-row">
-          <h1>When2Meet Iframe + AI Query Bar</h1>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Open settings"
-            onClick={() => setSettingsOpen((current) => !current)}
-          >
+          <h1>When2Meet... but with ✨ AI 🔮 (oooooooh)</h1>
+          <button type="button" className="icon-button" aria-label="Open settings" onClick={() => setSettingsOpen((current) => !current)}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M19.43 12.98c.04-.32.07-.65.07-.98s-.03-.66-.08-.99l2.11-1.65a.5.5 0 0 0 .12-.63l-2-3.46a.5.5 0 0 0-.6-.22l-2.49 1a7.15 7.15 0 0 0-1.72-.99l-.38-2.65a.5.5 0 0 0-.5-.42h-4a.5.5 0 0 0-.5.42L9.08 5.06c-.62.24-1.19.57-1.72.99l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46a.5.5 0 0 0 .12.63l2.11 1.65c-.05.33-.08.66-.08.99s.03.66.08.99L2.39 14.63a.5.5 0 0 0-.12.63l2 3.46c.13.22.39.31.6.22l2.49-1c.53.42 1.1.75 1.72.99l.38 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.38-2.65c.62-.24 1.19-.57 1.72-.99l2.49 1c.22.09.47 0 .6-.22l2-3.46a.5.5 0 0 0-.12-.63l-2.11-1.65ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z" />
             </svg>
@@ -297,11 +293,7 @@ export default function App() {
           <section className="settings-panel" aria-label="LLM settings">
             <label className="settings-field">
               Model Provider
-              <select
-                aria-label="Model provider"
-                value={provider}
-                onChange={(event) => setProvider(event.target.value as LlmProvider)}
-              >
+              <select aria-label="Model provider" value={provider} onChange={(event) => setProvider(event.target.value as LlmProvider)}>
                 <option value="chatgpt">ChatGPT</option>
                 <option value="claude">Claude</option>
                 <option value="gemini">Gemini</option>
@@ -342,12 +334,7 @@ export default function App() {
               placeholder="Ask a question and press Enter..."
               disabled={isStreaming}
             />
-            <button
-              type="submit"
-              className="icon-button send-button"
-              aria-label="Send query"
-              disabled={isStreaming}
-            >
+            <button type="submit" className="icon-button send-button" aria-label="Send query" disabled={isStreaming}>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z" />
               </svg>
@@ -359,18 +346,13 @@ export default function App() {
           <h2>LLM Response</h2>
           {llmError ? <p className="status error">{llmError}</p> : null}
           <div className="response-box">
-            <ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {streamedResponse || (isStreaming ? "Streaming response..." : "No response yet.")}
             </ReactMarkdown>
           </div>
         </section>
 
-        <iframe
-          title="When2Meet Frame"
-          src={iframeUrl}
-          onLoad={handleIframeLoad}
-          referrerPolicy="no-referrer"
-        />
+        <iframe title="When2Meet Frame" src={iframeUrl} onLoad={handleIframeLoad} referrerPolicy="no-referrer" />
 
         <p className={`status ${status === "error" ? "error" : ""}`}>
           Status: {statusLabel(status)}
